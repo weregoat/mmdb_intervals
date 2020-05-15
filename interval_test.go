@@ -8,7 +8,7 @@ import (
 func TestNewAddress(t *testing.T) {
 	tests := []struct {
 		IP          string
-		ExpectedInt uint64
+		ExpectedInt uint32
 	}{
 		{"0.0.0.1", 1},
 		{"300.0.0.1", 0},
@@ -30,7 +30,7 @@ func TestNewAddress(t *testing.T) {
 				t.Logf("Expecting no address from bad IP %s, got %v", test.IP, *a)
 			}
 		} else {
-			i := a.IntValue.Uint64()
+			i := a.IntValue
 			ei := test.ExpectedInt
 
 			ip := a.ToIP()

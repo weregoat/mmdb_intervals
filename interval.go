@@ -2,8 +2,9 @@ package main
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
-	"math/big"
+	"log"
 	"net"
 )
 
@@ -13,7 +14,7 @@ const size = net.IPv4len
 // I am being lazy here, as is much simpler to handle intervals this way
 // than to figure out a general way to do it with byte slices (and for IPv6 too).
 type Address struct {
-	IntValue  *big.Int
+	IntValue  uint32 // 4 bytes
 	IPAddress []byte // This is not really necessary, but handy
 }
 
@@ -87,10 +88,7 @@ func (a Address) Valid() bool {
 	if isZeros(a.IPAddress) {
 		return false
 	}
-	if !a.IntValue.IsInt64() {
-		return false
-	}
-	if a.IntValue.Uint64() == 0 {
+	if a.IntValue == 0 {
 		return false
 	}
 	return true
@@ -112,26 +110,29 @@ func NewAddress(ipv4 net.IP) *Address {
 	return a
 }
 
-func a2i(ipv4 net.IP) *big.Int {
+func a2i(ipv4 net.IP) uint32 {
+	var i uint32
 	ip := ipv4.To4()
 	if ip == nil || len(ip) != net.IPv4len {
-		return nil
+		log.Fatalf("invalid IPv4 address: %s", ipv4.String())
 	}
-	i := big.Int{}
-	i.SetBytes(ip)
-	return &i
+	buf := bytes.NewReader(ip)
+	err := binary.Read(buf, binary.BigEndian, &i)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return i
 }
 
-func i2IP(i *big.Int) net.IP {
-	var ip = make([]byte, size)
-	bytes := i.Bytes()
-	if len(bytes) > size {
-		return nil
+func i2IP(i uint32) net.IP {
+	var buf = new(bytes.Buffer)
+	err := binary.Write(buf, binary.BigEndian, i)
+	if err != nil {
+		log.Fatal(err)
 	}
-	pos := size - 1
-	for j := len(bytes) - 1; j >= 0; j-- {
-		ip[pos] = bytes[j]
-		pos--
+	ip := buf.Bytes()
+	if len(ip) > size {
+		log.Fatalf("error converting %d to bytes", i)
 	}
 	ipv4 := net.IPv4(
 		ip[0],
@@ -175,9 +176,7 @@ func (a Address) Next() *Address {
 	if !a.Valid() {
 		return nil
 	}
-	nextInt := big.NewInt(0)
-	nextInt.Add(big.NewInt(1), a.IntValue)
-	nextIP := i2IP(nextInt)
+	nextIP := i2IP(a.IntValue + 1)
 	return NewAddress(nextIP)
 }
 
@@ -203,10 +202,10 @@ func (n *Interval) Contains(ip net.IP) bool {
 */
 
 func CanJoin(a *Interval, b *Interval) bool {
-	aLower := a.lower.IntValue.Uint64()
-	bLower := b.lower.IntValue.Uint64()
-	aUpper := a.upper.IntValue.Uint64()
-	bUpper := b.upper.IntValue.Uint64()
+	aLower := a.lower.IntValue
+	bLower := b.lower.IntValue
+	aUpper := a.upper.IntValue
+	bUpper := b.upper.IntValue
 	// a overlaps lower end of b
 	if aLower <= bLower && aUpper >= bLower {
 		return true
@@ -235,8 +234,8 @@ func Join(a *Interval, b *Interval) *Interval {
 }
 
 func min(a *Address, b *Address) *Address {
-	aValue := a.IntValue.Uint64()
-	bValue := b.IntValue.Uint64()
+	aValue := a.IntValue
+	bValue := b.IntValue
 	if aValue <= bValue {
 		return a
 	}
@@ -244,8 +243,8 @@ func min(a *Address, b *Address) *Address {
 }
 
 func max(a *Address, b *Address) *Address {
-	aValue := a.IntValue.Uint64()
-	bValue := b.IntValue.Uint64()
+	aValue := a.IntValue
+	bValue := b.IntValue
 	if aValue >= bValue {
 		return a
 	}
